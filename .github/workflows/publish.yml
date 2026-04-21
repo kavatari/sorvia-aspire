@@ -29,40 +29,7 @@ jobs:
 
       - name: Detect version change
         id: version
-        shell: pwsh
-        run: |
-          $projectPath = 'src/Sorvia.Aspire.Hosting.Dokploy/Sorvia.Aspire.Hosting.Dokploy.csproj'
-          $projectContent = Get-Content $projectPath -Raw
-          $project = New-Object System.Xml.XmlDocument
-          $project.LoadXml($projectContent)
-          $currentVersion = @($project.Project.PropertyGroup.Version)[0]
-          if ([string]::IsNullOrWhiteSpace($currentVersion)) {
-            throw "Package version is missing in the project file."
-          }
-
-          "current_version=$currentVersion" >> $env:GITHUB_OUTPUT
-
-          $previousCommit = git rev-parse 'HEAD^1' 2>$null
-          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($previousCommit)) {
-            "previous_version=" >> $env:GITHUB_OUTPUT
-            "version_changed=true" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-
-          $previousCommit = $previousCommit.Trim()
-          $previousProjectContent = (git show "${previousCommit}:$projectPath" 2>$null | Out-String)
-          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($previousProjectContent)) {
-            "previous_version=" >> $env:GITHUB_OUTPUT
-            "version_changed=true" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-
-          $previousProjectContent = $previousProjectContent.TrimStart([char]0xFEFF).Trim()
-          $previousProject = New-Object System.Xml.XmlDocument
-          $previousProject.LoadXml($previousProjectContent)
-          $previousVersion = @($previousProject.Project.PropertyGroup.Version)[0]
-          "previous_version=$previousVersion" >> $env:GITHUB_OUTPUT
-          "version_changed=$([string]($previousVersion -ne $currentVersion).ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+        run: dotnet run --file .github/scripts/detect-version-change.cs -- src/Sorvia.Aspire.Hosting.Dokploy/Sorvia.Aspire.Hosting.Dokploy.csproj
 
       - name: Stop when package version did not change
         if: steps.version.outputs.version_changed != 'true'
