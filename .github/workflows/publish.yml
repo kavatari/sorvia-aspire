@@ -43,7 +43,7 @@ jobs:
             exit 0
           }
 
-          $previousProjectContent = git show "${env:BEFORE_SHA}:$projectPath" 2>$null
+          $previousProjectContent = (git show "${env:BEFORE_SHA}:$projectPath" 2>$null | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($previousProjectContent)) {
             "previous_version=" >> $env:GITHUB_OUTPUT
             "version_changed=true" >> $env:GITHUB_OUTPUT
