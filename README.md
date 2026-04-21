@@ -61,8 +61,8 @@ dotnet pack -c Release -o ./artifacts src/Sorvia.Aspire.Hosting.Dokploy/Sorvia.A
 
 GitHub Actions is split into:
 
-- `ci.yml` for restore, build, and pack validation
-- `publish.yml` for automatic publishing to nuget.org when the package version changes on `main`
+- `ci.yml` for restore, build, pack validation, and package artifact upload
+- `publish.yml` for automatic publishing to nuget.org after a successful `ci.yml` run on `main`, when the package version changed
 
 ## NuGet Trusted Publishing
 

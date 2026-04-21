@@ -37,7 +37,8 @@ dotnet pack .\src\Sorvia.Aspire.Hosting.Dokploy\Sorvia.Aspire.Hosting.Dokploy.cs
 - Publish workflow: `.github/workflows/publish.yml`
 - CI workflow: `.github/workflows/ci.yml`
 - NuGet publishing uses **nuget.org trusted publishing (OIDC)**, not a long-lived API key.
-- The publish workflow runs on pushes to `main` and publishes only when the package version changed.
+- The publish workflow runs after a successful CI run on `main` and publishes only when the package version changed.
+- CI is responsible for building and packing the package artifact; publish reuses that artifact instead of rebuilding.
 - Before changing publish behavior, keep `README.md` in sync with the workflow and nuget.org setup instructions.
 
 ## Notes for code changes
