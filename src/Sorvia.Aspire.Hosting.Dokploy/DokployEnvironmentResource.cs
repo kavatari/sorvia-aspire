@@ -52,9 +52,6 @@ public sealed partial class DokployEnvironmentResource : DockerComposeEnvironmen
         typeof(DockerComposeEnvironmentResource).GetProperty("ConfigureComposeFile", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Could not find Docker compose file callback property.");
 
-    private static readonly PropertyInfo s_dashboardProperty =
-        typeof(DockerComposeEnvironmentResource).GetProperty("Dashboard", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find Docker compose dashboard property.");
 
     private HashSet<string> _excludedComposeServices = [];
     private Dictionary<string, PublishedComposeServiceSnapshot> _publishedComposeServices = new(StringComparer.OrdinalIgnoreCase);
@@ -123,6 +120,8 @@ public sealed partial class DokployEnvironmentResource : DockerComposeEnvironmen
     /// push their images to this registry during publish, so Dokploy can pull them.
     /// </summary>
     public IContainerRegistry? DefaultContainerRegistry { get; set; }
+
+    internal IResourceBuilder<DockerComposeAspireDashboardResource>? Dashboard { get; set; }
 
     private sealed record DokployAutoRegistry(
         string RegistryName,
@@ -474,7 +473,7 @@ public sealed partial class DokployEnvironmentResource : DockerComposeEnvironmen
             .Where(resource => environment.TryGetPublishedComposeService(resource, out _))
             .ToList();
 
-        if (environment.GetDashboardResource() is { } dashboardResource
+        if (environment.Dashboard?.Resource is { } dashboardResource
             && !computeResources.Contains(dashboardResource)
             && environment.TryGetPublishedComposeService(dashboardResource, out _))
         {
@@ -845,17 +844,6 @@ public sealed partial class DokployEnvironmentResource : DockerComposeEnvironmen
     private bool TryGetPublishedComposeService(IResource resource, out PublishedComposeServiceSnapshot service)
         => _publishedComposeServices.TryGetValue(SanitizeName(resource.Name), out service!);
 
-    private IResource? GetDashboardResource()
-    {
-        var dashboard = s_dashboardProperty.GetValue(this);
-        if (dashboard is IResource resource)
-        {
-            return resource;
-        }
-
-        return dashboard?.GetType().GetProperty("Resource", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            ?.GetValue(dashboard) as IResource;
-    }
 
     private async Task<string?> ResolveApplicationDockerImageAsync(
         IResource resource,

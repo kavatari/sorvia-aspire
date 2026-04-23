@@ -1,13 +1,13 @@
 #pragma warning disable ASPIREINTERACTION001 // This type is used for interaction with the Dokploy REST API and is not intended for direct use by application code. Suppress this diagnostic to proceed.
 #pragma warning disable ASPIREATS001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 
+using System.Runtime.CompilerServices;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Docker;
 using Aspire.Hosting.Dokploy;
 using Aspire.Hosting.Lifecycle;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using System.Reflection;
 
 namespace Aspire.Hosting;
 
@@ -58,21 +58,11 @@ public static class DokployEnvironmentExtensions
         typeof(DockerComposeEnvironmentResource).Assembly.GetType("Aspire.Hosting.Docker.DockerComposeInfrastructure")
         ?? throw new InvalidOperationException("Could not find Docker compose infrastructure type.");
 
-    private static readonly PropertyInfo s_dashboardProperty =
-        typeof(DockerComposeEnvironmentResource).GetProperty("Dashboard", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find Docker compose dashboard property.");
-
-    private static readonly MethodInfo s_createDashboardMethod =
-        typeof(DockerComposeAspireDashboardResourceBuilderExtensions).GetMethod(
-            "CreateDashboard",
-            BindingFlags.Static | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Could not find Docker compose dashboard factory method.");
 
     private static IDistributedApplicationBuilder AddDokployDockerComposeInfrastructure(this IDistributedApplicationBuilder builder)
     {
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton(typeof(IDistributedApplicationEventingSubscriber), s_dockerComposeInfrastructureType));
-
         return builder;
     }
 
@@ -110,6 +100,7 @@ public static class DokployEnvironmentExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
         builder.AddDokployDockerComposeInfrastructure();
 
         // Check if a Dokploy environment already exists (only one allowed)
@@ -118,17 +109,21 @@ public static class DokployEnvironmentExtensions
             return builder.CreateResourceBuilder(existingResource);
         }
 
-        var resource = new DokployEnvironmentResource(name)
-        {
-            DeploymentEnvironmentName = "production"
-        };
-
-        var dashboard = ((IResourceBuilder<DockerComposeAspireDashboardResource>)s_createDashboardMethod.Invoke(null, [builder, "aspire-dashboard"])!)
+        var aspireDashboard = builder.CreateAspireDashboard($"{name}-dashboard")
             .PublishAsDockerComposeService((_, service) =>
             {
                 service.Restart = "always";
+
             });
-        s_dashboardProperty.SetValue(resource, dashboard);
+
+        var resource = new DokployEnvironmentResource(name)
+        {
+            DeploymentEnvironmentName = "production",
+            Dashboard = aspireDashboard
+        };
+
+        // Set the dashboard on the Docker Compose environment resource using the non-public property accessor.
+        SetDashboard(resource, aspireDashboard);
 
         if (builder.ExecutionContext.IsRunMode)
         {
@@ -137,9 +132,22 @@ public static class DokployEnvironmentExtensions
             return builder.CreateResourceBuilder(resource);
         }
 
+
         resource.ServerUrlParameter = builder.AddParameter("dokploy-url").Resource;
         resource.ApiKeyParameter = builder.AddParameter("dokploy-api-key", secret: true).Resource;
-        resource.ProjectNameParameter = builder.AddParameter("dokploy-project-name").Resource;
+        resource.ProjectNameParameter = builder.AddParameter("dokploy-project-name")
+            .WithDescription("Target Dokploy project name.")
+            .WithCustomInput(parameter => new()
+            {
+                Name = parameter.Name,
+                Label = "Dokploy project name",
+                Description = parameter.Description,
+                InputType = InputType.Text,
+                Placeholder = name,
+                Value = name,
+                Required = true
+            })
+            .Resource;
         resource.DeploymentEnvironmentNameParameter = builder.AddParameter("dokploy-environment")
             .WithDescription("Target Dokploy environment inside the project. Leave empty to use production.")
             .WithCustomInput(parameter => new()
@@ -225,4 +233,27 @@ public static class DokployEnvironmentExtensions
         builder.Resource.Annotations.Add(new ContainerRegistryReferenceAnnotation(registry.Resource));
         return builder;
     }
+
+    internal static IResourceBuilder<DockerComposeAspireDashboardResource> CreateAspireDashboard(
+        this IDistributedApplicationBuilder builder,
+        string name)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        var resource = new DockerComposeAspireDashboardResource(name);
+
+        // Initialize the dashboard resource
+        return builder.CreateResourceBuilder(resource)
+                      .WithImage("mcr.microsoft.com/dotnet/nightly/aspire-dashboard")
+                      .WithHttpEndpoint(targetPort: 18888)
+                      // Expose the HTTP endpoint externally for the dashboard, it is password protected
+                      // and disabled by default so an explicit call is required to turn it on.
+                      .WithEndpoint(endpointName: "http", e => e.IsExternal = true)
+                      .WithHttpEndpoint(name: "otlp-grpc", targetPort: 18889)
+                      .WithHttpEndpoint(name: "otlp-http", targetPort: 18890);
+    }
+
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "set_Dashboard")]
+    private static extern void SetDashboard(DockerComposeEnvironmentResource environment, IResourceBuilder<DockerComposeAspireDashboardResource> dashboard);
 }
